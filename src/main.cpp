@@ -6,11 +6,11 @@
 //  integrated into the FTXUI event loop.
 // ─────────────────────────────────────────────────────────────
 
-#include "shell.h"
-#include "parser.h"
-#include "registry.h"
 #include "builtins.h"
 #include "command.h"
+#include "parser.h"
+#include "registry.h"
+#include "shell.h"
 
 #include <string>
 #include <vector>
@@ -23,134 +23,138 @@
 using namespace ftxui;
 
 int main() {
-    // ── State ────────────────────────────────────────────────
-    std::string input_text;                 // current input buffer
-    std::vector<std::string> history_lines; // visible output log
+  // ── State ────────────────────────────────────────────────
+  std::string input_text;                 // current input buffer
+  std::vector<std::string> history_lines; // visible output log
 
-    // ── Command Registry Setup ───────────────────────────────
-    devshell::CommandRegistry registry;
+  // ── Command Registry Setup ───────────────────────────────
+  devshell::CommandRegistry registry;
 
-    // Register built-in commands.
-    // NOTE: HelpCommand receives a raw observer pointer to the registry.
-    // Construction order guarantees registry outlives all commands.
-    registry.registerCommand(std::make_unique<devshell::ExitCommand>());
-    registry.registerCommand(std::make_unique<devshell::ClearCommand>());
-    registry.registerCommand(std::make_unique<devshell::EchoCommand>());
-    // HelpCommand registered last so it can see all other commands
-    registry.registerCommand(std::make_unique<devshell::HelpCommand>(&registry));
+  // Register built-in commands.
+  // NOTE: HelpCommand receives a raw observer pointer to the registry.
+  // Construction order guarantees registry outlives all commands.
+  registry.registerCommand(std::make_unique<devshell::ExitCommand>());
+  registry.registerCommand(std::make_unique<devshell::ClearCommand>());
+  registry.registerCommand(std::make_unique<devshell::EchoCommand>());
+  // HelpCommand registered last so it can see all other commands
+  registry.registerCommand(std::make_unique<devshell::HelpCommand>(&registry));
 
-    // Seed the history with a welcome banner
-    history_lines.emplace_back("Welcome to " + std::string(devshell::kTitle));
-    history_lines.emplace_back("Type 'help' for available commands.");
-    history_lines.emplace_back("");
+  // Seed the history with a welcome banner
+  history_lines.emplace_back("Welcome to BANANA SHELL");
+  history_lines.emplace_back("Type 'help' for available commands.");
+  history_lines.emplace_back("");
 
-    // Forward-declare screen so on_enter lambda can call screen.Exit()
-    auto screen = ScreenInteractive::Fullscreen();
+  // Forward-declare screen so on_enter lambda can call screen.Exit()
+  auto screen = ScreenInteractive::Fullscreen();
 
-    // ── Components ───────────────────────────────────────────
+  // ── Components ───────────────────────────────────────────
 
-    // Input field configuration
-    auto input_option = InputOption::Default();
-    input_option.placeholder = "Type a command...";
-    input_option.on_enter = [&] {
-        if (input_text.empty()) return;
+  // Input field configuration
+  auto input_option = InputOption::Default();
+  input_option.placeholder = "Type a command...";
+  input_option.on_enter = [&] {
+    if (input_text.empty())
+      return;
 
-        // 1. Echo the raw input to history
-        history_lines.push_back("❯ " + input_text);
+    // 1. Echo the raw input to history
+    history_lines.push_back("❯ " + input_text);
 
-        // 2. Tokenize
-        auto tokens = devshell::tokenize(input_text);
-        input_text.clear();
+    // 2. Tokenize
+    auto tokens = devshell::tokenize(input_text);
+    input_text.clear();
 
-        if (tokens.empty()) return;
+    if (tokens.empty())
+      return;
 
-        // 3. Dispatch through the registry
-        std::string result = registry.dispatch(tokens);
+    // 3. Dispatch through the registry
+    std::string result = registry.dispatch(tokens);
 
-        // 4. Handle control-flow signals
-        if (result == devshell::kSignalExit) {
-            history_lines.push_back("  Goodbye.");
-            screen.Exit();
-            return;
-        }
+    // 4. Handle control-flow signals
+    if (result == devshell::kSignalExit) {
+      history_lines.push_back("  Goodbye.");
+      screen.Exit();
+      return;
+    }
 
-        if (result == devshell::kSignalClear) {
-            history_lines.clear();
-            return;
-        }
+    if (result == devshell::kSignalClear) {
+      history_lines.clear();
+      return;
+    }
 
-        // 5. Append command output to history (support multi-line output)
-        if (!result.empty()) {
-            // Split on newlines so each line renders independently
-            std::string::size_type pos = 0;
-            std::string::size_type prev = 0;
-            while ((pos = result.find('\n', prev)) != std::string::npos) {
-                history_lines.push_back("  " + result.substr(prev, pos - prev));
-                prev = pos + 1;
-            }
-            // Last (or only) line
-            history_lines.push_back("  " + result.substr(prev));
-        }
-    };
+    // 5. Append command output to history (support multi-line output)
+    if (!result.empty()) {
+      // Split on newlines so each line renders independently
+      std::string::size_type pos = 0;
+      std::string::size_type prev = 0;
+      while ((pos = result.find('\n', prev)) != std::string::npos) {
+        history_lines.push_back("  " + result.substr(prev, pos - prev));
+        prev = pos + 1;
+      }
+      // Last (or only) line
+      history_lines.push_back("  " + result.substr(prev));
+    }
+  };
 
-    Component input_box = Input(&input_text, input_option);
+  Component input_box = Input(&input_text, input_option);
 
-    // ── Renderer ─────────────────────────────────────────────
-    //
-    //  ┌─ Developer Shell v1.0 ───────────────────────┐
-    //  │                                               │
-    //  │   (scrollable history area)                   │
-    //  │                                               │
-    //  ├───────────────────────────────────────────────┤
-    //  │ ❯ _                                           │
-    //  └───────────────────────────────────────────────┘
+  // ── Renderer ─────────────────────────────────────────────
+  //
+  //  ┌─ Developer Shell v1.0 ───────────────────────┐
+  //  │                                               │
+  //  │   (scrollable history area)                   │
+  //  │                                               │
+  //  ├───────────────────────────────────────────────┤
+  //  │ ❯ _                                           │
+  //  └───────────────────────────────────────────────┘
 
-    auto renderer = Renderer(input_box, [&] {
-        // Build history elements
-        Elements history_elements;
-        history_elements.reserve(history_lines.size());
-        for (const auto& line : history_lines) {
-            history_elements.push_back(text(line));
-        }
+  auto renderer = Renderer(input_box, [&] {
+    // Build history elements
+    Elements history_elements;
+    history_elements.reserve(history_lines.size());
+    for (const auto &line : history_lines) {
+      history_elements.push_back(text(line));
+    }
 
-        // History pane — fills available vertical space
-        auto history_pane = vbox(std::move(history_elements))
-            | focusPositionRelative(0.0f, 1.0f)   // auto-scroll to bottom
-            | yframe                               // enable vertical scrolling
-            | flex;                                // fill remaining space
+    // History pane — fills available vertical space
+    auto history_pane =
+        vbox(std::move(history_elements)) |
+        focusPositionRelative(0.0f, 1.0f) // auto-scroll to bottom
+        | yframe                          // enable vertical scrolling
+        | flex;                           // fill remaining space
 
-        // Input prompt line
-        auto prompt_line = hbox({
-            text("❯ ") | bold | color(Color::Green),
-            input_box->Render() | flex,
-        });
-
-        // Compose full layout
-        return vbox({
-            // Title bar
-            text(devshell::kTitle) | bold | center | color(Color::Cyan),
-            separator(),
-
-            // History area
-            history_pane,
-
-            // Separator + input
-            separator(),
-            prompt_line,
-        }) | border | color(Color::GrayLight);
+    // Input prompt line
+    auto prompt_line = hbox({
+        text("❯ ") | bold | color(Color::Green),
+        input_box->Render() | flex,
     });
 
-    // ── Keybinding: Ctrl-C to quit ──────────────────────────
-    auto final_component = CatchEvent(renderer, [&](Event event) {
-        if (event == Event::Special("\x03")) {
-            screen.Exit();
-            return true;
-        }
-        return false;
-    });
+    // Compose full layout
+    return vbox({
+               // Title bar
+               text(devshell::kTitle) | bold | center | color(Color::Cyan),
+               separator(),
 
-    // ── Run ──────────────────────────────────────────────────
-    screen.Loop(final_component);
+               // History area
+               history_pane,
 
-    return 0;
+               // Separator + input
+               separator(),
+               prompt_line,
+           }) |
+           border | color(Color::GrayLight);
+  });
+
+  // ── Keybinding: Ctrl-C to quit ──────────────────────────
+  auto final_component = CatchEvent(renderer, [&](Event event) {
+    if (event == Event::Special("\x03")) {
+      screen.Exit();
+      return true;
+    }
+    return false;
+  });
+
+  // ── Run ──────────────────────────────────────────────────
+  screen.Loop(final_component);
+
+  return 0;
 }

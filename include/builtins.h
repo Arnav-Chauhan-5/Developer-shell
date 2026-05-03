@@ -23,40 +23,40 @@ namespace devshell {
 // ── help ─────────────────────────────────────────────────────
 class HelpCommand final : public Command {
 public:
-    /// Construct with a non-owning pointer to the registry.
-    /// The registry MUST outlive this command instance.
-    explicit HelpCommand(const CommandRegistry* registry);
+  /// Construct with a non-owning pointer to the registry.
+  /// The registry MUST outlive this command instance.
+  explicit HelpCommand(const CommandRegistry *registry);
 
-    std::string execute(const std::vector<std::string>& args) override;
-    std::string getName() const override;
-    std::string getDescription() const override;
+  std::string execute(const std::vector<std::string> &args) override;
+  std::string getName() const override;
+  std::string getDescription() const override;
 
 private:
-    const CommandRegistry* registry_;
+  const CommandRegistry *registry_;
 };
 
 // ── exit ─────────────────────────────────────────────────────
 class ExitCommand final : public Command {
 public:
-    std::string execute(const std::vector<std::string>& args) override;
-    std::string getName() const override;
-    std::string getDescription() const override;
+  std::string execute(const std::vector<std::string> &args) override;
+  std::string getName() const override;
+  std::string getDescription() const override;
 };
 
 // ── clear ────────────────────────────────────────────────────
 class ClearCommand final : public Command {
 public:
-    std::string execute(const std::vector<std::string>& args) override;
-    std::string getName() const override;
-    std::string getDescription() const override;
+  std::string execute(const std::vector<std::string> &args) override;
+  std::string getName() const override;
+  std::string getDescription() const override;
 };
 
 // ── echo ─────────────────────────────────────────────────────
 class EchoCommand final : public Command {
 public:
-    std::string execute(const std::vector<std::string>& args) override;
-    std::string getName() const override;
-    std::string getDescription() const override;
+  std::string execute(const std::vector<std::string> &args) override;
+  std::string getName() const override;
+  std::string getDescription() const override;
 };
 
 } // namespace devshell

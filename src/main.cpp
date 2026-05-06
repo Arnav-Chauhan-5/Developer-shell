@@ -40,7 +40,7 @@ int main() {
   registry.registerCommand(std::make_unique<devshell::HelpCommand>(&registry));
 
   // Seed the history with a welcome banner
-  history_lines.emplace_back("Welcome to BANANA SHELL");
+  history_lines.emplace_back("Welcome to " + std::string(devshell::kTitle));
   history_lines.emplace_back("Type 'help' for available commands.");
   history_lines.emplace_back("");
 

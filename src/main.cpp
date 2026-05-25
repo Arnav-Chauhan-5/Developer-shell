@@ -38,6 +38,7 @@ int main() {
   registry.registerCommand(std::make_unique<devshell::EchoCommand>());
   // HelpCommand registered last so it can see all other commands
   registry.registerCommand(std::make_unique<devshell::HelpCommand>(&registry));
+  registry.registerCommand(std::make_unique<devshell::ChangeDirectoryCommand>());
 
   // Seed the history with a welcome banner
   history_lines.emplace_back("Welcome to " + std::string(devshell::kTitle));

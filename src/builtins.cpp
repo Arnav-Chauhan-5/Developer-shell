@@ -6,6 +6,7 @@
 #include "shell.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <sstream>
 
 namespace devshell {
@@ -92,6 +93,52 @@ std::string EchoCommand::execute(const std::vector<std::string> &args) {
 std::string EchoCommand::getName() const { return "echo"; }
 std::string EchoCommand::getDescription() const {
   return "Print arguments to output";
+}
+
+// ═════════════════════════════════════════════════════════════
+//  ChangeDirectoryCommand
+// ═════════════════════════════════════════════════════════════
+
+std::string
+ChangeDirectoryCommand::execute(const std::vector<std::string> &args) {
+  namespace fs = std::filesystem;
+
+  // No argument provided → print the current working directory
+  if (args.size() <= 1) {
+    std::error_code ec;
+    auto cwd = fs::current_path(ec);
+    if (ec) {
+      return "cd: unable to determine current directory";
+    }
+    return cwd.string();
+  }
+
+  // Resolve the target path (handles both relative and absolute)
+  fs::path target_path(args[1]);
+
+  // Validate existence and directory-ness
+  std::error_code ec;
+  if (!fs::exists(target_path, ec) || ec) {
+    return "cd: no such file or directory: " + args[1];
+  }
+
+  if (!fs::is_directory(target_path, ec) || ec) {
+    return "cd: not a directory: " + args[1];
+  }
+
+  // Perform the actual directory change
+  fs::current_path(target_path, ec);
+  if (ec) {
+    return "cd: permission denied: " + args[1];
+  }
+
+  // Return the new working directory as confirmation
+  return fs::current_path().string();
+}
+
+std::string ChangeDirectoryCommand::getName() const { return "cd"; }
+std::string ChangeDirectoryCommand::getDescription() const {
+  return "Change the current working directory";
 }
 
 } // namespace devshell

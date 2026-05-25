@@ -59,6 +59,14 @@ public:
   std::string getDescription() const override;
 };
 
+// ── cd (change directory) ────────────────────────────────────
+class ChangeDirectoryCommand final : public Command {
+public:
+  std::string execute(const std::vector<std::string> &args) override;
+  std::string getName() const override;
+  std::string getDescription() const override;
+};
+
 } // namespace devshell
 
 #endif // DEVSHELL_BUILTINS_H

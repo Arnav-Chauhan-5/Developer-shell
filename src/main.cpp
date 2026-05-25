@@ -2,8 +2,8 @@
 //  Developer Shell v1.0 — Entry Point
 //  A custom TUI shell built with FTXUI and C++20.
 //
-//  Phase 2: Tokenizer + Command Registry + Built-in commands
-//  integrated into the FTXUI event loop.
+//  Phase 5: Command History Navigation
+//  Up/Down arrow keys cycle through previously executed commands.
 // ─────────────────────────────────────────────────────────────
 
 #include "builtins.h"
@@ -26,6 +26,10 @@ int main() {
   // ── State ────────────────────────────────────────────────
   std::string input_text;                 // current input buffer
   std::vector<std::string> history_lines; // visible output log
+
+  // ── Command History ─────────────────────────────────────
+  std::vector<std::string> command_history; // previously executed commands
+  int history_index = -1;                   // -1 = not navigating
 
   // ── Command Registry Setup ───────────────────────────────
   devshell::CommandRegistry registry;
@@ -56,6 +60,10 @@ int main() {
   input_option.on_enter = [&] {
     if (input_text.empty())
       return;
+
+    // Save non-empty command to history and reset navigation index
+    command_history.push_back(input_text);
+    history_index = -1;
 
     // 1. Echo the raw input to history
     history_lines.push_back("❯ " + input_text);
@@ -97,6 +105,36 @@ int main() {
   };
 
   Component input_box = Input(&input_text, input_option);
+
+  // ── Arrow-key history navigation ────────────────────────
+  input_box = CatchEvent(input_box, [&](Event event) {
+    if (event == Event::ArrowUp) {
+      if (command_history.empty())
+        return true;
+      if (history_index == -1) {
+        // Start navigating from the most recent command
+        history_index = static_cast<int>(command_history.size()) - 1;
+      } else if (history_index > 0) {
+        --history_index;
+      }
+      input_text = command_history[history_index];
+      return true;
+    }
+    if (event == Event::ArrowDown) {
+      if (history_index == -1)
+        return true; // nothing to navigate
+      if (history_index < static_cast<int>(command_history.size()) - 1) {
+        ++history_index;
+        input_text = command_history[history_index];
+      } else {
+        // Past the end — clear input and stop navigating
+        history_index = -1;
+        input_text.clear();
+      }
+      return true;
+    }
+    return false;
+  });
 
   // ── Renderer ─────────────────────────────────────────────
   //

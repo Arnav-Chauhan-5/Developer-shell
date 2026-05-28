@@ -2,8 +2,9 @@
 //  Developer Shell v1.0 — Entry Point
 //  A custom TUI shell built with FTXUI and C++20.
 //
-//  Phase 5: Command History Navigation
-//  Up/Down arrow keys cycle through previously executed commands.
+//  Phase 6: Tab Auto-Completion
+//  Tab completes command names (first word) and file/directory
+//  names (subsequent words) from the current directory.
 // ─────────────────────────────────────────────────────────────
 
 #include "builtins.h"
@@ -12,6 +13,8 @@
 #include "registry.h"
 #include "shell.h"
 
+#include <algorithm>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -25,6 +28,7 @@ using namespace ftxui;
 int main() {
   // ── State ────────────────────────────────────────────────
   std::string input_text;                 // current input buffer
+  int cursor_pos = 0;                     // FTXUI cursor sync position
   std::vector<std::string> history_lines; // visible output log
 
   // ── Command History ─────────────────────────────────────
@@ -57,6 +61,7 @@ int main() {
   // Input field configuration
   auto input_option = InputOption::Default();
   input_option.placeholder = "Type a command...";
+  input_option.cursor_position = &cursor_pos;
   input_option.on_enter = [&] {
     if (input_text.empty())
       return;
@@ -106,8 +111,78 @@ int main() {
 
   Component input_box = Input(&input_text, input_option);
 
-  // ── Arrow-key history navigation ────────────────────────
+  // ── Tab auto-completion & arrow-key history navigation ──
   input_box = CatchEvent(input_box, [&](Event event) {
+    // ── Tab auto-completion ──────────────────────────────
+    if (event == Event::Tab) {
+      if (input_text.empty())
+        return true;
+
+      // Find the last word (the fragment to complete)
+      auto last_space = input_text.rfind(' ');
+      std::string prefix =
+          (last_space == std::string::npos)
+              ? input_text
+              : input_text.substr(last_space + 1);
+
+      if (prefix.empty())
+        return true;
+
+      bool is_command = (last_space == std::string::npos);
+      std::string match;
+
+      // Try command-name completion when the cursor is on the first word
+      if (is_command) {
+        auto names = registry.getCommandNames(); // already sorted
+        for (const auto& name : names) {
+          if (name.size() >= prefix.size() &&
+              name.compare(0, prefix.size(), prefix) == 0) {
+            match = name;
+            break;
+          }
+        }
+      }
+
+      // File/directory completion (also used as fallback for first word)
+      if (match.empty()) {
+        std::vector<std::string> fs_matches;
+        try {
+          namespace fs = std::filesystem;
+          for (const auto& entry :
+               fs::directory_iterator(fs::current_path())) {
+            std::string fname = entry.path().filename().string();
+            if (fname.size() >= prefix.size() &&
+                fname.compare(0, prefix.size(), prefix) == 0) {
+              // Append a trailing separator for directories
+              if (entry.is_directory())
+                fname += fs::path::preferred_separator;
+              fs_matches.push_back(fname);
+            }
+          }
+        } catch (...) {
+          // Ignore filesystem errors silently
+        }
+        if (!fs_matches.empty()) {
+          std::sort(fs_matches.begin(), fs_matches.end());
+          match = fs_matches.front();
+        }
+      }
+
+      // Replace the incomplete word with the full match
+      if (!match.empty()) {
+        if (last_space == std::string::npos) {
+          input_text = match;
+        } else {
+          input_text =
+              input_text.substr(0, last_space + 1) + match;
+        }
+        // Sync FTXUI cursor to the end of the new string
+        cursor_pos = static_cast<int>(input_text.size());
+      }
+      return true;
+    }
+
+    // ── Arrow Up — history navigation ────────────────────
     if (event == Event::ArrowUp) {
       if (command_history.empty())
         return true;
@@ -118,18 +193,23 @@ int main() {
         --history_index;
       }
       input_text = command_history[history_index];
+      cursor_pos = static_cast<int>(input_text.size());
       return true;
     }
+
+    // ── Arrow Down — history navigation ──────────────────
     if (event == Event::ArrowDown) {
       if (history_index == -1)
         return true; // nothing to navigate
       if (history_index < static_cast<int>(command_history.size()) - 1) {
         ++history_index;
         input_text = command_history[history_index];
+        cursor_pos = static_cast<int>(input_text.size());
       } else {
         // Past the end — clear input and stop navigating
         history_index = -1;
         input_text.clear();
+        cursor_pos = 0;
       }
       return true;
     }

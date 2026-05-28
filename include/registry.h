@@ -45,6 +45,11 @@ public:
     [[nodiscard]]
     const std::unordered_map<std::string, std::unique_ptr<Command>>& commands() const;
 
+    /// Return a sorted list of all registered command names.
+    /// Used by Tab auto-completion to match partial input against builtins.
+    [[nodiscard]]
+    std::vector<std::string> getCommandNames() const;
+
     // Non-copyable (owns unique_ptrs)
     CommandRegistry(const CommandRegistry&) = delete;
     CommandRegistry& operator=(const CommandRegistry&) = delete;

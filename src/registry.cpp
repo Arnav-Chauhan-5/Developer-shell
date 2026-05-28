@@ -4,6 +4,7 @@
 
 #include "registry.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 
@@ -76,6 +77,16 @@ bool CommandRegistry::hasCommand(const std::string &name) const {
 const std::unordered_map<std::string, std::unique_ptr<Command>> &
 CommandRegistry::commands() const {
   return commands_;
+}
+
+std::vector<std::string> CommandRegistry::getCommandNames() const {
+  std::vector<std::string> names;
+  names.reserve(commands_.size());
+  for (const auto& [name, _] : commands_) {
+    names.push_back(name);
+  }
+  std::sort(names.begin(), names.end());
+  return names;
 }
 
 } // namespace devshell

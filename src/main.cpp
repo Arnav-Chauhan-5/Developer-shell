@@ -2,11 +2,12 @@
 //  Developer Shell v1.0 — Entry Point
 //  A custom TUI shell built with FTXUI and C++20.
 //
-//  Phase 8: Polished Terminal UX
+//  Phase 8b: Batched Streaming & History Cap
 //    • Custom block-cursor (inverted char at cursor_pos)
-//    • Async external-command execution with real-time
-//      line-by-line streaming into the terminal view
+//    • Async external-command execution with batched UI
+//      updates (flush every 20 lines or 50 ms)
 //    • Mouse-wheel scrolling with auto-snap-to-bottom on typing
+//    • Terminal stream capped at 500 lines to prevent lag
 //  Preserves Phase 5 (arrow-key history), Phase 6 (Tab
 //  auto-completion), Phase 7 (terminal stream UI).
 // ─────────────────────────────────────────────────────────────
@@ -20,8 +21,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
+
 #include <string>
 #include <thread>
 #include <vector>
@@ -33,6 +36,11 @@
 
 using namespace ftxui;
 
+// ── Constants ────────────────────────────────────────────────
+static constexpr std::size_t kMaxStreamLines = 500;  // history cap
+static constexpr std::size_t kBatchSize      = 100;  // lines per flush
+static constexpr int         kFlushIntervalMs = 100;  // max ms between flushes
+
 // ── Helper: build the colored bash-style prompt element ──────
 static Element MakePrompt() {
   return hbox({
@@ -41,6 +49,19 @@ static Element MakePrompt() {
       text("~ ")       | bold | color(Color::Blue),
       text("$ ")       | color(Color::GrayLight),
   });
+}
+
+// ── Helper: trim terminal_stream to kMaxStreamLines ──────────
+// Erases the oldest lines from the front of the vector so the
+// total size never exceeds the cap.  Must be called on the main
+// thread (or under a lock that covers terminal_stream).
+static void TrimStream(std::vector<Element>& stream) {
+  if (stream.size() > kMaxStreamLines) {
+    stream.erase(stream.begin(),
+                 stream.begin() +
+                     static_cast<std::ptrdiff_t>(
+                         stream.size() - kMaxStreamLines));
+  }
 }
 
 int main() {
@@ -169,6 +190,7 @@ int main() {
           prev = pos + 1;
         }
         terminal_stream.push_back(text(result.substr(prev)));
+        TrimStream(terminal_stream);
       }
       return;
     }
@@ -205,9 +227,43 @@ int main() {
         return;
       }
 
-      // Read subprocess output line-by-line with accumulation
-      // so partial fgets buffers don't split a single line into
-      // multiple elements.
+      // ── Lock-free double-buffer accumulation ─────────────
+      // The worker reads from the OS pipe into a purely local
+      // vector (no shared state, no mutex).  When the batch is
+      // ready it is std::move'd into a screen.Post() lambda
+      // that executes on the FTXUI main thread — the only
+      // thread that ever touches terminal_stream — so no lock
+      // is needed for the final insert either.
+      //
+      // Flush triggers:
+      //   • local_batch.size() >= kBatchSize  (100 lines)
+      //   • kFlushIntervalMs elapsed          (100 ms)
+      //   • subprocess finished               (final flush)
+
+      std::vector<Element> local_batch;
+      local_batch.reserve(kBatchSize);
+
+      auto last_flush = std::chrono::steady_clock::now();
+
+      // Move the local batch into a Post() for the main thread.
+      auto FlushBatch = [&]() {
+        if (local_batch.empty())
+          return;
+        // Capture by value — the main-thread lambda owns the data
+        screen.Post([&, batch = std::move(local_batch)]() {
+          terminal_stream.insert(terminal_stream.end(),
+                                 batch.begin(), batch.end());
+          TrimStream(terminal_stream);
+          scroll_y = 1.0f;
+        });
+        // Reset local accumulator for the next batch
+        local_batch.clear();
+        local_batch.reserve(kBatchSize);
+        last_flush = std::chrono::steady_clock::now();
+      };
+
+      // Read subprocess output with line accumulation so
+      // partial fgets buffers don't split a single line.
       std::string line_buffer;
       std::array<char, 256> buffer{};
 
@@ -216,22 +272,28 @@ int main() {
                         static_cast<int>(buffer.size()), pipe)) {
         line_buffer += buffer.data();
 
-        // Flush every complete line (delimited by '\n')
+        // Extract every complete line (delimited by '\n')
         std::string::size_type nl;
         while ((nl = line_buffer.find('\n')) != std::string::npos) {
           std::string line = line_buffer.substr(0, nl);
           line_buffer.erase(0, nl + 1);
 
-          // Trim trailing \r (Windows line endings)
           if (!line.empty() && line.back() == '\r')
             line.pop_back();
 
-          // Post to the main thread — screen.Post() is thread-safe
-          // and automatically triggers a UI redraw.
-          screen.Post([&, line = std::move(line)]() {
-            terminal_stream.push_back(text(line));
-            scroll_y = 1.0f; // keep view pinned to bottom during output
-          });
+          local_batch.push_back(text(line));
+        }
+
+        // Flush if batch is full or time interval elapsed
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - last_flush)
+                .count();
+
+        if (local_batch.size() >= kBatchSize ||
+            elapsed_ms >= kFlushIntervalMs) {
+          FlushBatch();
         }
       }
 
@@ -241,18 +303,15 @@ int main() {
           line_buffer.pop_back();
         if (!line_buffer.empty() && line_buffer.back() == '\n')
           line_buffer.pop_back();
-
-        screen.Post([&, line = std::move(line_buffer)]() {
-          terminal_stream.push_back(text(line));
-          scroll_y = 1.0f;
-        });
+        local_batch.push_back(text(line_buffer));
       }
+
+      // Final flush — push remaining lines to the main thread
+      FlushBatch();
 
       _pclose(pipe);
 
       // Signal the main thread that execution is done.
-      // Setting is_running inside Post() keeps it main-thread-only,
-      // avoiding any need for atomics on this flag.
       screen.Post([&]() {
         is_running = false;
       });

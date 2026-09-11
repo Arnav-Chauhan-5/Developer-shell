@@ -22,7 +22,6 @@
 #include <vector>
 
 namespace devshell {
-
 class CommandRegistry {
 public:
     CommandRegistry() = default;
